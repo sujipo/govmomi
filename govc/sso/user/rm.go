@@ -22,6 +22,7 @@ import (
 
 	"github.com/vmware/govmomi/govc/cli"
 	"github.com/vmware/govmomi/govc/flags"
+	"github.com/vmware/govmomi/govc/sso"
 	"github.com/vmware/govmomi/ssoadmin"
 )
 
@@ -50,7 +51,7 @@ Examples:
 }
 
 func (cmd *rm) Run(ctx context.Context, f *flag.FlagSet) error {
-	return withClient(ctx, cmd.ClientFlag, func(c *ssoadmin.Client) error {
+	return sso.WithClient(ctx, cmd.ClientFlag, func(c *ssoadmin.Client) error {
 		return c.DeletePrincipal(ctx, f.Arg(0))
 	})
 }

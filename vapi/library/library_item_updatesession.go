@@ -22,37 +22,34 @@ import (
 	"time"
 
 	"github.com/vmware/govmomi/vapi/internal"
+	"github.com/vmware/govmomi/vapi/rest"
 )
 
-// UpdateSession is used to create an initial update session
-type UpdateSession struct {
-	ID                        string `json:"id,omitempty"`
-	LibraryItemID             string `json:"library_item_id,omitempty"`
-	LibraryItemContentVersion string `json:"library_item_content_version,omitempty"`
-	// ErrorMessage              struct {
-	//	ID             string   `json:"id,omitempty"`
-	//	DefaultMessage string   `json:"default_message,omitempty"`
-	//	Args           []string `json:"args,omitempty"`
-	// } `json:"error_message,omitempty"`
-	ClientProgress int64      `json:"client_progress,omitempty"`
-	State          string     `json:"state,omitempty"`
-	ExpirationTime *time.Time `json:"expiration_time,omitempty"`
+// Session is used to create an initial update or download session
+type Session struct {
+	ClientProgress            int64                    `json:"client_progress,omitempty"`
+	ErrorMessage              *rest.LocalizableMessage `json:"error_message,omitempty"`
+	ExpirationTime            *time.Time               `json:"expiration_time,omitempty"`
+	ID                        string                   `json:"id,omitempty"`
+	LibraryItemContentVersion string                   `json:"library_item_content_version,omitempty"`
+	LibraryItemID             string                   `json:"library_item_id,omitempty"`
+	State                     string                   `json:"state,omitempty"`
 }
 
 // CreateLibraryItemUpdateSession creates a new library item
-func (c *Manager) CreateLibraryItemUpdateSession(ctx context.Context, session UpdateSession) (string, error) {
+func (c *Manager) CreateLibraryItemUpdateSession(ctx context.Context, session Session) (string, error) {
 	url := internal.URL(c, internal.LibraryItemUpdateSession)
 	spec := struct {
-		CreateSpec UpdateSession `json:"create_spec"`
+		CreateSpec Session `json:"create_spec"`
 	}{session}
 	var res string
 	return res, c.Do(ctx, url.Request(http.MethodPost, spec), &res)
 }
 
 // GetLibraryItemUpdateSession gets the update session information with status
-func (c *Manager) GetLibraryItemUpdateSession(ctx context.Context, id string) (*UpdateSession, error) {
+func (c *Manager) GetLibraryItemUpdateSession(ctx context.Context, id string) (*Session, error) {
 	url := internal.URL(c, internal.LibraryItemUpdateSession).WithID(id)
-	var res UpdateSession
+	var res Session
 	return &res, c.Do(ctx, url.Request(http.MethodGet), &res)
 }
 
@@ -105,7 +102,11 @@ func (c *Manager) WaitOnLibraryItemUpdateSession(
 		if err != nil {
 			return err
 		}
+
 		if session.State != "ACTIVE" {
+			if session.State == "ERROR" {
+				return session.ErrorMessage
+			}
 			return nil
 		}
 		time.Sleep(interval)
@@ -113,4 +114,52 @@ func (c *Manager) WaitOnLibraryItemUpdateSession(
 			intervalCallback()
 		}
 	}
+}
+
+// CreateLibraryItemDownloadSession creates a new library item
+func (c *Manager) CreateLibraryItemDownloadSession(ctx context.Context, session Session) (string, error) {
+	url := internal.URL(c, internal.LibraryItemDownloadSession)
+	spec := struct {
+		CreateSpec Session `json:"create_spec"`
+	}{session}
+	var res string
+	return res, c.Do(ctx, url.Request(http.MethodPost, spec), &res)
+}
+
+// GetLibraryItemDownloadSession gets the download session information with status
+func (c *Manager) GetLibraryItemDownloadSession(ctx context.Context, id string) (*Session, error) {
+	url := internal.URL(c, internal.LibraryItemDownloadSession).WithID(id)
+	var res Session
+	return &res, c.Do(ctx, url.Request(http.MethodGet), &res)
+}
+
+// ListLibraryItemDownloadSession gets the list of download sessions
+func (c *Manager) ListLibraryItemDownloadSession(ctx context.Context) ([]string, error) {
+	url := internal.URL(c, internal.LibraryItemDownloadSession)
+	var res []string
+	return res, c.Do(ctx, url.Request(http.MethodGet), &res)
+}
+
+// CancelLibraryItemDownloadSession cancels an download session
+func (c *Manager) CancelLibraryItemDownloadSession(ctx context.Context, id string) error {
+	url := internal.URL(c, internal.LibraryItemDownloadSession).WithID(id).WithAction("cancel")
+	return c.Do(ctx, url.Request(http.MethodPost), nil)
+}
+
+// DeleteLibraryItemDownloadSession deletes an download session
+func (c *Manager) DeleteLibraryItemDownloadSession(ctx context.Context, id string) error {
+	url := internal.URL(c, internal.LibraryItemDownloadSession).WithID(id)
+	return c.Do(ctx, url.Request(http.MethodDelete), nil)
+}
+
+// FailLibraryItemDownloadSession fails an download session
+func (c *Manager) FailLibraryItemDownloadSession(ctx context.Context, id string) error {
+	url := internal.URL(c, internal.LibraryItemDownloadSession).WithID(id).WithAction("fail")
+	return c.Do(ctx, url.Request(http.MethodPost), nil)
+}
+
+// KeepAliveLibraryItemDownloadSession keeps an inactive download session alive.
+func (c *Manager) KeepAliveLibraryItemDownloadSession(ctx context.Context, id string) error {
+	url := internal.URL(c, internal.LibraryItemDownloadSession).WithID(id).WithAction("keep-alive")
+	return c.Do(ctx, url.Request(http.MethodPost), nil)
 }

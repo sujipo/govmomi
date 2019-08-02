@@ -234,12 +234,22 @@ func (flag *ClientFlag) Register(ctx context.Context, f *flag.FlagSet) {
 
 func (flag *ClientFlag) Process(ctx context.Context) error {
 	return flag.ProcessOnce(func() error {
-		if err := flag.DebugFlag.Process(ctx); err != nil {
+		err := flag.DebugFlag.Process(ctx)
+		if err != nil {
 			return err
 		}
 
 		if flag.url == nil {
 			return errors.New("specify an " + cDescr)
+		}
+
+		flag.username, err = session.Secret(flag.username)
+		if err != nil {
+			return err
+		}
+		flag.password, err = session.Secret(flag.password)
+		if err != nil {
+			return err
 		}
 
 		// Override username if set
@@ -278,7 +288,7 @@ func (flag *ClientFlag) configure(sc *soap.Client) (soap.RoundTripper, error) {
 	if flag.cert != "" {
 		cert, err := tls.LoadX509KeyPair(flag.cert, flag.key)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s=%q %s=%q: %s", envCertificate, flag.cert, envPrivateKey, flag.key, err)
 		}
 
 		sc.SetCertificate(cert)
@@ -462,6 +472,13 @@ func (flag *ClientFlag) newClient() (*vim25.Client, error) {
 
 	// Set client, since we didn't pass it in the constructor
 	c.Client = sc
+
+	if flag.vimVersion == "" {
+		if err = c.UseServiceVersion(); err != nil {
+			return nil, err
+		}
+		flag.vimVersion = c.Version
+	}
 
 	if err := flag.Login(ctx, c); err != nil {
 		return nil, err

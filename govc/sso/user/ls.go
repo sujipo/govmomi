@@ -25,6 +25,7 @@ import (
 
 	"github.com/vmware/govmomi/govc/cli"
 	"github.com/vmware/govmomi/govc/flags"
+	"github.com/vmware/govmomi/govc/sso"
 	"github.com/vmware/govmomi/ssoadmin"
 	"github.com/vmware/govmomi/ssoadmin/types"
 )
@@ -95,7 +96,7 @@ func (r personResult) Write(w io.Writer) error {
 func (cmd *ls) Run(ctx context.Context, f *flag.FlagSet) error {
 	arg := f.Arg(0)
 
-	return withClient(ctx, cmd.ClientFlag, func(c *ssoadmin.Client) error {
+	return sso.WithClient(ctx, cmd.ClientFlag, func(c *ssoadmin.Client) error {
 		if cmd.solution {
 			info, err := c.FindSolutionUsers(ctx, arg)
 			if err != nil {
