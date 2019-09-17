@@ -18,6 +18,7 @@ package simulator
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -97,7 +98,7 @@ type Model struct {
 	Pod int
 
 	// Delay configurations
-	DelayConfig DelayConfig
+	DelayConfig DelayConfig `json:"-"`
 
 	// total number of inventory objects, set by Count()
 	total int
@@ -531,6 +532,9 @@ func (m *Model) Run(f func(context.Context, *vim25.Client) error) error {
 		return err
 	}
 
+	m.Service.TLS = new(tls.Config)
+	m.Service.RegisterEndpoints = true
+
 	s := m.Service.NewServer()
 	defer s.Close()
 
@@ -544,9 +548,9 @@ func (m *Model) Run(f func(context.Context, *vim25.Client) error) error {
 	return f(ctx, c.Client)
 }
 
-// Example calls Model.Run for each model and will panic if f returns an error.
+// Run calls Model.Run for each model and will panic if f returns an error.
 // If no model is specified, the VPX Model is used by default.
-func Example(f func(context.Context, *vim25.Client) error, model ...*Model) {
+func Run(f func(context.Context, *vim25.Client) error, model ...*Model) {
 	m := model
 	if len(m) == 0 {
 		m = []*Model{VPX()}
@@ -558,4 +562,12 @@ func Example(f func(context.Context, *vim25.Client) error, model ...*Model) {
 			panic(err)
 		}
 	}
+}
+
+// Test calls Run and expects the caller propagate any errors, via testing.T for example.
+func Test(f func(context.Context, *vim25.Client), model ...*Model) {
+	Run(func(ctx context.Context, c *vim25.Client) error {
+		f(ctx, c)
+		return nil
+	}, model...)
 }

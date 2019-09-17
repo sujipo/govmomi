@@ -209,7 +209,10 @@ EOF
   assert_success
   assert_matches DC0_DVPG0
 
-  run govc vm.destroy ttylinux ttylinux2
+  run env GOVC_DATASTORE="" govc library.deploy "my-content/$TTYLINUX_NAME" ttylinux3 # datastore is not required
+  assert_success
+
+  run govc vm.destroy ttylinux ttylinux2 ttylinux3
   assert_success
 
   item_id=$(govc library.info -json "/my-content/$TTYLINUX_NAME" | jq -r .[].id)
@@ -219,4 +222,50 @@ EOF
 
   run govc library.deploy "my-content/$TTYLINUX_NAME" ttylinux2
   assert_failure
+}
+
+@test "library.pubsub" {
+  vcsim_env
+
+  url="https://$(govc env GOVC_URL)/TODO"
+
+  run govc library.create -sub "$url" my-content
+  assert_success
+
+  run govc library.info my-content
+  assert_success
+  assert_matches "Subscription:"
+  assert_matches "$url"
+}
+
+@test "library.findbyid" {
+  vcsim_env
+
+  run govc library.create my-content
+  assert_success
+  id="$output"
+
+  run govc library.create my-content
+  assert_success
+
+  run govc library.import my-content library.bats
+  assert_failure # "my-content" matches 2 items
+
+  run govc library.import "$id" library.bats
+  assert_success # using id to find library
+
+  n=$(govc library.info my-content | grep -c Name:)
+  [ "$n" == 2 ]
+
+  n=$(govc library.info "$id" | grep -c Name:)
+  [ "$n" == 1 ]
+
+  run govc library.rm my-content
+  assert_failure # "my-content" matches 2 items
+
+  run govc library.rm "$id"
+  assert_success
+
+  n=$(govc library.info my-content | grep -c Name:)
+  [ "$n" == 1 ]
 }

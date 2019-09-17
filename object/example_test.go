@@ -31,8 +31,71 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
+func ExampleResourcePool_Owner() {
+	simulator.Run(func(ctx context.Context, c *vim25.Client) error {
+		finder := find.NewFinder(c)
+
+		for _, name := range []string{"DC0_H0_VM0", "DC0_C0_RP0_VM0"} {
+			vm, err := finder.VirtualMachine(ctx, name)
+			if err != nil {
+				return err
+			}
+
+			pool, err := vm.ResourcePool(ctx)
+			if err != nil {
+				return err
+			}
+
+			owner, err := pool.Owner(ctx)
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("%s owner is a %T\n", name, owner)
+		}
+
+		return nil
+	})
+	// Output:
+	// DC0_H0_VM0 owner is a *object.ComputeResource
+	// DC0_C0_RP0_VM0 owner is a *object.ClusterComputeResource
+}
+
+func ExampleVirtualMachine_CreateSnapshot() {
+	simulator.Run(func(ctx context.Context, c *vim25.Client) error {
+		vm, err := find.NewFinder(c).VirtualMachine(ctx, "DC0_H0_VM0")
+		if err != nil {
+			return err
+		}
+
+		task, err := vm.CreateSnapshot(ctx, "backup", "Backup", false, false)
+		if err != nil {
+			return err
+		}
+		if err = task.Wait(ctx); err != nil {
+			return err
+		}
+
+		id, err := vm.FindSnapshot(ctx, "backup")
+		if err != nil {
+			return err
+		}
+
+		var snapshot mo.VirtualMachineSnapshot
+		err = vm.Properties(ctx, *id, []string{"config.hardware.device"}, &snapshot)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("%d devices", len(snapshot.Config.Hardware.Device))
+
+		return nil
+	})
+	// Output: 13 devices
+}
+
 func ExampleVirtualMachine_HostSystem() {
-	simulator.Example(func(ctx context.Context, c *vim25.Client) error {
+	simulator.Run(func(ctx context.Context, c *vim25.Client) error {
 		vm, err := find.NewFinder(c).VirtualMachine(ctx, "DC0_H0_VM0")
 		if err != nil {
 			return err
@@ -56,7 +119,7 @@ func ExampleVirtualMachine_HostSystem() {
 }
 
 func ExampleVirtualMachine_Clone() {
-	simulator.Example(func(ctx context.Context, c *vim25.Client) error {
+	simulator.Run(func(ctx context.Context, c *vim25.Client) error {
 		finder := find.NewFinder(c)
 		dc, err := finder.Datacenter(ctx, "DC0")
 		if err != nil {
@@ -103,7 +166,7 @@ func ExampleVirtualMachine_Clone() {
 }
 
 func ExampleVirtualMachine_Reconfigure() {
-	simulator.Example(func(ctx context.Context, c *vim25.Client) error {
+	simulator.Run(func(ctx context.Context, c *vim25.Client) error {
 		vm, err := find.NewFinder(c).VirtualMachine(ctx, "DC0_H0_VM0")
 		if err != nil {
 			return err
@@ -138,7 +201,7 @@ func ExampleCommon_Destroy() {
 	model := simulator.VPX()
 	model.Datastore = 2
 
-	simulator.Example(func(ctx context.Context, c *vim25.Client) error {
+	simulator.Run(func(ctx context.Context, c *vim25.Client) error {
 		// Change to "LocalDS_0" will cause ResourceInUse error,
 		// as simulator VMs created by the VPX model use "LocalDS_0".
 		ds, err := find.NewFinder(c).Datastore(ctx, "LocalDS_1")
@@ -162,7 +225,7 @@ func ExampleCommon_Destroy() {
 }
 
 func ExampleCustomFieldsManager_Set() {
-	simulator.Example(func(ctx context.Context, c *vim25.Client) error {
+	simulator.Run(func(ctx context.Context, c *vim25.Client) error {
 		m, err := object.GetCustomFieldsManager(c)
 		if err != nil {
 			return err

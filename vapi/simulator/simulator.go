@@ -40,6 +40,7 @@ import (
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/nfc"
 	"github.com/vmware/govmomi/ovf"
+	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vapi/internal"
 	"github.com/vmware/govmomi/vapi/library"
 	"github.com/vmware/govmomi/vapi/rest"
@@ -50,12 +51,6 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 	vim "github.com/vmware/govmomi/vim25/types"
 )
-
-type session struct {
-	User         string    `json:"user"`
-	Created      time.Time `json:"created_time"`
-	LastAccessed time.Time `json:"last_accessed_time"`
-}
 
 type item struct {
 	*library.Item
@@ -86,10 +81,19 @@ type handler struct {
 	Category    map[string]*tags.Category
 	Tag         map[string]*tags.Tag
 	Association map[string]map[internal.AssociatedObject]bool
-	Session     map[string]*session
+	Session     map[string]*rest.Session
 	Library     map[string]content
 	Update      map[string]update
 	Download    map[string]download
+}
+
+func init() {
+	simulator.RegisterEndpoint(func(s *simulator.Service, r *simulator.Registry) {
+		if r.IsVPX() {
+			path, handler := New(s.Listen, r.OptionManager().Setting)
+			s.Handle(path, handler)
+		}
+	})
 }
 
 // New creates a vAPI simulator.
@@ -100,7 +104,7 @@ func New(u *url.URL, settings []vim.BaseOptionValue) (string, http.Handler) {
 		Category:    make(map[string]*tags.Category),
 		Tag:         make(map[string]*tags.Tag),
 		Association: make(map[string]map[internal.AssociatedObject]bool),
-		Session:     make(map[string]*session),
+		Session:     make(map[string]*rest.Session),
 		Library:     make(map[string]content),
 		Update:      make(map[string]update),
 		Download:    make(map[string]download),
@@ -119,6 +123,7 @@ func New(u *url.URL, settings []vim.BaseOptionValue) (string, http.Handler) {
 		{internal.AssociationPath + "/", s.associationID},
 		{internal.LibraryPath, s.library},
 		{internal.LocalLibraryPath, s.library},
+		{internal.SubscribedLibraryPath, s.library},
 		{internal.LibraryPath + "/", s.libraryID},
 		{internal.LocalLibraryPath + "/", s.libraryID},
 		{internal.LibraryItemPath, s.libraryItem},
@@ -156,7 +161,7 @@ func New(u *url.URL, settings []vim.BaseOptionValue) (string, http.Handler) {
 }
 
 func (s *handler) isAuthorized(r *http.Request) bool {
-	if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, internal.SessionPath) {
+	if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, internal.SessionPath) && s.action(r) == "" {
 		return true
 	}
 	id := r.Header.Get(internal.SessionCookieName)
@@ -320,6 +325,14 @@ func (s *handler) session(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPost:
+		if s.action(r) != "" {
+			if session, ok := s.Session[id]; ok {
+				s.ok(w, session)
+			} else {
+				w.WriteHeader(http.StatusUnauthorized)
+			}
+			return
+		}
 		user, ok := s.hasAuthorization(r)
 		if !ok {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -327,7 +340,7 @@ func (s *handler) session(w http.ResponseWriter, r *http.Request) {
 		}
 		id = uuid.New().String()
 		now := time.Now()
-		s.Session[id] = &session{user, now, now}
+		s.Session[id] = &rest.Session{User: user, Created: now, LastAccessed: now}
 		http.SetCookie(w, &http.Cookie{
 			Name:  internal.SessionCookieName,
 			Value: id,
@@ -1328,6 +1341,16 @@ func (s *handler) libraryDeploy(lib *library.Library, item *item, deploy vcenter
 				break
 			}
 		}
+	}
+
+	if ds.Value == "" {
+		// Datastore is optional in the deploy spec, but not in OvfManager.CreateImportSpec
+		refs, err = v.Find(ctx, []string{"Datastore"}, nil)
+		if err != nil {
+			return nil, err
+		}
+		// TODO: consider StorageProfileID
+		ds = refs[0]
 	}
 
 	cisp := types.OvfCreateImportSpecParams{
